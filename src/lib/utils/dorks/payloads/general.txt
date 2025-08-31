@@ -1,0 +1,20 @@
+password site:SITE filetype:txt inurl:(dump | paste)
+confidential site:SITE filetype:pdf inurl:shared
+api_key site:SITE inurl:.env filetype:env
+"user:pass" site:SITE inurl:paste
+developer site:SITE inurl:bio
+resume site:SITE inurl:pub filetype:pdf
+"index of" site:SITE inurl:files
+database site:SITE filetype:sql inurl:public
+private site:SITE filetype:docx inurl:sharing
+credentials site:SITE inurl:(config | settings) filetype:yml
+leak site:SITE inurl:u/ filetype:txt
+sensitive site:SITE filetype:txt inurl:backup
+"ssh key" site:SITE inurl:repository
+"data breach" site:SITE inurl:breach
+email site:SITE inurl:dump filetype:txt
+"admin panel" site:SITE intitle:login inurl:admin
+confidential site:SITE filetype:pdf inurl:document
+"api token" site:SITE inurl:(question | answer)
+user site:SITE inurl:explore intitle:profile
+"password list" site:SITE filetype:txt inurl:public

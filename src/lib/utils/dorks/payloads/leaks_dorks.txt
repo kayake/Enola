@@ -1,0 +1,20 @@
+STRING site:SITE filetype:txt inurl:(dump | paste | leak)
+password site:SITE filetype:txt inurl:(credentials | user:pass)
+api_key site:SITE inurl:.env filetype:(env | txt)
+"email:password" site:SITE filetype:txt
+credentials site:SITE filetype:(sql | txt) inurl:dump
+"private key" site:SITE filetype:txt inurl:(ssh | rsa)
+database site:SITE filetype:sql inurl:backup
+confidential site:SITE filetype:pdf inurl:(shared | public)
+"access token" site:SITE filetype:txt inurl:(config | env)
+user:pass site:SITE filetype:txt inurl:paste
+"api secret" site:SITE inurl:.env filetype:env
+leak site:SITE filetype:txt inurl:(data | breach)
+"db_password" site:SITE filetype:(env | yml) inurl:config
+sensitive site:SITE filetype:txt inurl:(backup | dump)
+"hash" site:SITE filetype:txt inurl:(md5 | sha)
+"credit card" site:SITE filetype:txt inurl:dump
+token site:SITE filetype:txt inurl:(api | auth)
+"session id" site:SITE filetype:txt inurl:log
+"vpn config" site:SITE filetype:(ovpn | txt) inurl:config
+"wallet seed" site:SITE filetype:txt inurl:(crypto | bitcoin)

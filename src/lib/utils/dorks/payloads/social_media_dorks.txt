@@ -1,0 +1,15 @@
+STRING site:SITE inurl:(bio | about)
+STRING site:SITE inurl:profile
+STRING site:SITE inurl:pub
+STRING site:SITE inurl:(user | u/) intitle:profile
+STRING site:SITE inurl:(bio | description)
+STRING site:SITE inurl:(post | status)
+STRING site:SITE inurl:(profile | page) filetype:pdf
+STRING site:SITE inurl:(portfolio | user)
+STRING site:SITE inurl:(group | community)
+STRING site:SITE inurl:(stream | video)
+STRING site:SITE inurl:(explore | people)
+STRING site:SITE inurl:(channel | bio)
+STRING site:SITE inurl:(location | profile)
+STRING site:SITE inurl:(ask | question)
+STRING site:SITE inurl:(public | post)
