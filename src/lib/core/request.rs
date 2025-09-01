@@ -7,9 +7,17 @@ impl Requester {
         client.get(format!("https://google.com/search?q={}", query)
         .header("User-Agent", "Mozila/5.0")
         .header("Cookie", "CONSENT=YES+; SOCS=CAESHAgBEhIaAB")
+        .header("Accept", "*/*")
     }
 
-    pub fn send_build(build: RequestBuilder) -> Result<Response, Error> {
+    pub async fn send_build(build: RequestBuilder) -> Result<Response, Error> {
         build.send().await?;
-    }   
+    }
+}
+
+struct Response;
+impl Response {
+    pub async fn get_text(res: Response) <str> {
+        res.await.text.await;
+    }
 }
