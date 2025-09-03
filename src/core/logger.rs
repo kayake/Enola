@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use std::io::{self, Write}
+use std::io::{self, Write};
 use chrono::Local;
 
 #[derive(Debug, PartialEq, PartialOrd)]
@@ -33,7 +33,7 @@ impl LogLevel {
 struct Logger {
     level: LogLevel,
     output: Mutex<Box<dyn Write + Send>>,
-}
+};
 
 impl Logger {
     pub fn new(level: LogLevel) -> Self {
@@ -50,7 +50,7 @@ impl Logger {
                 format!("\x1b[1m{}\x1b[0m", level.as_str())
             } else {
                 level.as_str().to_string()
-            }
+            };
             writeln!(out, "[ {} ] {}", key, msg).unwrap();
         }
     }
