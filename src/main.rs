@@ -5,7 +5,9 @@ use crate::core::request::{ build_request_to_google, send_build};
 use crate::core::query::{ Query, get_lines };
 
 use clap::Parser;
-use reqwest::Client;
+use reqwest::{Client, RequestBuilder, Response};
+use std::sync::{Mutex, Arc};
+use futures::stream::{ StreamExt };
 
 #[derive(Parser)]
 #[command(name = "Enola")]
@@ -33,7 +35,7 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     let _args = Cli::parse();
-    let _logger = Logger::new(LogLevel::from(_args.verbose));
+    let _logger = Arc::new(Logger::new(LogLevel::from(_args.verbose)));
 
     let query: Vec<String> = if _args.queries.is_empty() {
         Query::new(&_args.sites, &_args.payloads, &_args.target).build().unwrap()
@@ -42,14 +44,40 @@ async fn main() {
     };
     _logger.dbg(&format!("{} build(s) were loaded", query.len()), true);
 
-    let client = reqwest::Client::new();
+    let client = Client::new();
     _logger.dbg("Client created", true);
-    let mut queries: Vec<String> = Vec::new();
-    for q in query.clone() {
-        _logger.inf(&format!("Query: {}", q), false);
-        queries.push(q)
-    }
+    
+    let builds: Vec<RequestBuilder> = query
+        .iter()
+        .map(|q| build_request_to_google(client.clone(), q))
+        .collect();
 
-    let builds = build_request_to_google(client, queries[0].as_str());
-    _logger.dbg(&format!("Request built: {:?}", builds), true);
+    _logger.inf(&format!("{} request(s) were built", builds.len()), true);
+
+    let simultaneous_requests = 10;
+    let responses: Arc<Mutex<Vec<Response>>> = Arc::new(Mutex::new(Vec::new()));
+    _logger.dbg(&format!("Sending requests with {} simultaneous connections", simultaneous_requests), true);
+
+    let stream = futures::stream::iter(builds)
+        .map(|build| {
+            let responses = Arc::clone(&responses);
+            let logger = Arc::clone(&_logger);
+            tokio::spawn(async move {
+                match send_build(build).await {
+                    Ok(response) => {
+                        let mut res = responses.lock().unwrap();
+                        res.push(response);
+                    },
+                    Err(e) => {
+                        logger.err(&format!("Request failed: {}", e), true);
+                    }
+            }
+        })
+    })
+    .buffer_unordered(simultaneous_requests);
+    stream.collect::<Vec<_>>().await;
+
+    for response in Arc::try_unwrap(responses).unwrap().into_inner().unwrap() {
+        _logger.res(&format!("Response: {} {}", response.status(), response.url()), false);
+    }
 }
