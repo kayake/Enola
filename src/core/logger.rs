@@ -1,6 +1,5 @@
 use std::sync::Mutex;
 use std::io::{self, Write};
-use chrono::Local;
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum LogLevel {
@@ -29,11 +28,26 @@ impl LogLevel {
     }
 }
 
+impl From<u8> for LogLevel {
+    fn from(value: u8) -> Self {
+        match value {
+            1 => LogLevel::Info,
+            2 => LogLevel::Warn,
+            3 => LogLevel::Error,
+            4 => LogLevel::Debug,
+            5 => LogLevel::Found,
+            6 => LogLevel::NotFound,
+            7 => LogLevel::Request,
+            _ => LogLevel::Response,
+        }
+    }
+}
 
-struct Logger {
+
+pub(crate) struct Logger {
     level: LogLevel,
     output: Mutex<Box<dyn Write + Send>>,
-};
+}
 
 impl Logger {
     pub fn new(level: LogLevel) -> Self {
@@ -51,7 +65,7 @@ impl Logger {
             } else {
                 level.as_str().to_string()
             };
-            writeln!(out, "[ {} ] {}", key, msg).unwrap();
+            writeln!(out, "[ {} ] {}", key, message).unwrap();
         }
     }
 
