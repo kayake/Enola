@@ -15,7 +15,7 @@ sudo pacman -S enola
 ### 1.3 Termux
 
 > [!WARNING]
-> `Rust` is not officially supported on `Termux`. Use `Kali NetHunter` or download the binary from the Releases.
+> `Rust` is not officially supported on `Termux`. Use `Kali NetHunter RootLess` (or `Kali NetHunter`) or download the binary from the Releases.
 
 ### 1.4 Others
 
