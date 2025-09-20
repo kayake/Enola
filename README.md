@@ -61,3 +61,21 @@ If you have lists of Sites and Payloads, it's interesting to use them instead of
 ```bash
 <...> --sites mysites.txt --payloads mypayloads.txt
 ```
+
+### 2.3 Miscellaneous
+Actually, I had no idea how name this type of group, so I put this name
+
+#### 2.3.1 Verbose
+##### Levels
+
+| Name     |   Level  |  Description  |
+| -------- | -------- | ------------- |
+|  Info    |    1     |               |
+|  Warn    |    2     |               |
+|  Error   |    3     |               |
+|  Found   |    4     |   Show found results            |
+| Not Found|    5     |   Display playload that wasn't found            |
+|  Debug   |    6     |               |
+|  Request |    7     |               |
+|  Response|    8     |               |
+
