@@ -155,7 +155,6 @@ async fn main() {
                         responses.lock().await.push(response);
                     },
                     Err(e) => {
-                        logger.err(&format!("Request failed: {}", e), true);
                         return;
                     }
             }
