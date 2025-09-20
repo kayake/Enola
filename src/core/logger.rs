@@ -6,9 +6,9 @@ pub enum LogLevel {
     Info = 0,
     Warn,
     Error,
-    Debug,
     Found,
     NotFound,
+    Debug,
     Request,
     Response
 }
@@ -34,9 +34,9 @@ impl From<u8> for LogLevel {
             1 => LogLevel::Info,
             2 => LogLevel::Warn,
             3 => LogLevel::Error,
-            4 => LogLevel::Debug,
-            5 => LogLevel::Found,
-            6 => LogLevel::NotFound,
+            4 => LogLevel::Found,
+            5 => LogLevel::NotFound,
+            6 => LogLevel::Debug,
             7 => LogLevel::Request,
             _ => LogLevel::Response,
         }
@@ -58,7 +58,7 @@ impl Logger {
     }
 
     pub fn log(&self, level: LogLevel, message: &str, bold: bool) {
-        if level >= self.level {
+        if level <= self.level {
             let mut out = self.output.lock().unwrap();
             let key = if bold {
                 format!("\x1b[1m{}\x1b[0m", level.as_str())

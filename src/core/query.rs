@@ -1,10 +1,12 @@
+use std::env;
 use std::fs::File;
+use std::path::Path;
 use std::io::{BufRead, BufReader};
 use std::io::Error;
 use regex::Regex;
 
 pub fn get_lines(file_path: &str) -> Result<Vec<String>, Error> {
-    let file = File::open(file_path)?;
+    let file = File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(file_path)))?;
     let reader = BufReader::new(file);
 
     let lines: Vec<String> = reader
@@ -51,7 +53,7 @@ impl QueryBuilder {
     }
 }
 
-pub(crate) struct Query {
+pub struct Query {
     builder: QueryBuilder,
     target: String,
 }

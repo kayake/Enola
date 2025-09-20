@@ -1,11 +1,10 @@
 use reqwest::{Client, RequestBuilder, Response, Result};
 use scraper::{Html, Selector};
+use urlencoding::encode;
 
 pub fn build_request_to_google(client: Client, query: &str) -> RequestBuilder {
-    client.get(format!("https://google.com/search?q={}", query))
-    .header("User-Agent", "Mozila/5.0")
-    .header("Cookie", "CONSENT=YES+; SOCS=CAESHAgBEhIaAB")
-    .header("Accept", "*/*")
+    let url = format!("https://google.com/search?q={}", encode(query));
+    client.get(&url)
 }
 
 pub async fn send_build(build: RequestBuilder) -> Result<Response> {
