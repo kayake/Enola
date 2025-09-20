@@ -66,7 +66,7 @@ impl Logger {
                 level.as_str().to_string()
             };
             writeln!(out, "[ {} ] {}", key, message).unwrap();
-        }
+       }
     }
 
 
