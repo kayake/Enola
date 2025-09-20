@@ -8,8 +8,31 @@ use clap::Parser;
 use reqwest::header::HeaderMap;
 use reqwest::{Client, RequestBuilder, Response};
 use std::sync::{Mutex, Arc};
+use tokio::time::sleep;
 use futures::stream::{ StreamExt };
 
+fn time_format(seconds: u64) -> String {
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let secs = seconds % 60;
+
+    let mut parts = Vec::new();
+    if hours > 0 {
+        parts.push(format!("{} hour{}", hours, if hours > 1 { "s" } else { "" }));
+    }
+    if minutes > 0 {
+        parts.push(format!("{} minute{}", minutes, if minutes > 1 { "s" } else { "" }));
+    }
+    if secs > 0 || parts.is_empty() {
+        parts.push(format!("{} second{}", secs, if secs > 1 { "s" } else { "" }));
+    }  
+
+    let last = parts.len() - 1;
+    let value = std::mem::take(&mut parts[last]);
+    parts[last] = format!("and {}", value);
+
+    parts.join(", ")
+}
 
 #[derive(Parser)]
 #[command(name = "Enola")]
@@ -33,11 +56,14 @@ struct Cli {
     #[arg(short='q', long, help="Provide queries", help_heading="Settings")]
     queries: Option<String>,
 
-    #[arg(short='c', long="connections", help="Number of simultaneous requests", help_heading="Settings", default_value_t=10)]
+    #[arg(short='c', long="connections", help="Number of simultaneous requests", help_heading="Request", default_value_t=3)]
     simultaneous_requests: usize,
 
-    #[arg(long, help="Proxy List", help_heading="Settings")]
+    #[arg(long, help="Proxy List", help_heading="Request")]
     proxies: Option<String>,
+
+    #[arg(short='d', long, help="Delay between requests (in milliseconds)", help_heading="Request", default_value_t=1000)]
+    delay: u64,
 
     #[arg(short, long="apimode", help="Use APIs search engine's site", help_heading="Mode", default_value_t=false)]
     apimode: bool,
@@ -80,27 +106,47 @@ async fn main() {
         .map(|q| build_request_to_google(client.clone(), q))
         .collect();
 
+    let builds_len = builds.len();
+
     _logger.inf(&format!("Done | {} request(s) were built", builds.len()), true);
 
     let simultaneous_requests = _args.simultaneous_requests;
     if simultaneous_requests == 0 {
         _logger.err("number of simultaneous requests cannot be zero", true);
         return;
-    } else if simultaneous_requests > 10 {
-        _logger.warn("number of simultaneous requests greater than 10 may lead to rate limiting by Google", false);
+    } else if simultaneous_requests > 3 {
+        _logger.warn("number of simultaneous requests greater than 3 may lead to rate limiting by Google", false);
+        let input = _logger.input("Do you want to continue? [Y/n]").to_lowercase();
+        if !input.starts_with('y') && !input.is_empty() {
+            return
+        }
+    }
+
+    if _args.delay < 1000 {
+        _logger.warn("delay less than 1000 milliseconds may lead to rate limiting by Google", false);
+        let input = _logger.input("Do you want to continue? [Y/n]").to_lowercase();
+        if !input.starts_with('y') || !input.is_empty() {
+            return
+        }
     }
     let responses: Arc<Mutex<Vec<Response>>> = Arc::new(Mutex::new(Vec::new()));
     _logger.dbg(&format!("sending requests with {} simultaneous connections", simultaneous_requests), true);
 
+    let time_approx = (builds.len() as u64 * _args.delay) / simultaneous_requests as u64 / 1000;
+    _logger.inf(&format!("this may take approximately \x1b[35;1m{}\x1b[0m", time_format(time_approx)), false);
+    let continues = _logger.input("Do you want to continue? [Y/n]").to_lowercase();
+    if !continues.starts_with('y') || !continues.is_empty() {
+        return
+    }
+    let start_time = std::time::Instant::now();
     let stream = futures::stream::iter(builds)
-        .map(|build| {
+        .map(|build| async {
             let responses = Arc::clone(&responses);
             let logger = Arc::clone(&_logger);
             tokio::spawn(async move {
-                logger.req(&format!("Sending request to {}", build.try_clone().unwrap().build().unwrap().url()), false);
+                sleep(std::time::Duration::from_millis(_args.delay)).await;
                 match send_build(build).await {
                     Ok(response) => {
-                        logger.res(&format!("Received response: {} {}", response.status(), response.url()), false);
                         responses.lock().unwrap().push(response);
                     },
                     Err(e) => {
@@ -111,26 +157,30 @@ async fn main() {
         })
     })
     .buffer_unordered(simultaneous_requests);
-    stream.collect::<Vec<_>>().await;
-    _logger.inf("processing responses..", false);
-    let _responses = Arc::try_unwrap(responses).unwrap().into_inner().unwrap();
-    _logger.dbg(&format!("{} responses loaded", _responses.len()), false);
-    if _responses.is_empty() {
-        _logger.err("no responses were received", true);
-        return;
+stream.collect::<Vec<_>>().await;
+let duration = start_time.elapsed();
+_logger.inf(&format!("avarage {:.2} requests/min completed in {:.2?} (Percentage Error: {}%)", builds_len as f64 / duration.as_secs_f64(), time_format(duration.as_secs()), (duration.as_secs_f64() - time_approx as f64) / (time_approx as f64) * 100 as f64), true);
+_logger.inf("processing responses..", false);
+let _responses = Arc::try_unwrap(responses).unwrap().into_inner().unwrap();
+_logger.dbg(&format!("{} responses loaded", _responses.len()), false);
+if _responses.is_empty() {
+    _logger.err("no responses were received", true);
+    return;
+}
+for response in _responses {
+    let status = response.status();
+    let url = response.url().clone();
+    let text = parse(response.text().await.unwrap().as_str());
+    _logger.req(&format!("Sending request to {}", url), false);
+    _logger.res(&format!("Received response: {} {}", status, url), true);
+    if text.is_empty() {
+        _logger.nfnd(&format!("No results found for {} => {}", url, status), true);
+        continue;
     }
-    for response in _responses {
-        let status = response.status();
-        let url = response.url().clone();
-        let text = parse(response.text().await.unwrap().as_str());
-        if text.is_empty() {
-            _logger.nfnd(&format!("No results found for {} => {}", url, status), true);
-            continue;
+    for (title, link, description) in text {
+        if !title.is_empty() && !link.is_empty() && !description.is_empty() {
+            _logger.fnd(format!("{} - {} ({}) => {}", title, description, link, status).as_str(), true);
         }
-        for (title, link, description) in text {
-            if !title.is_empty() && !link.is_empty() && !description.is_empty() {
-                _logger.fnd(format!("{} - {} ({}) => {}", title, description, link, status).as_str(), true);
-            }
         }
     }
 }

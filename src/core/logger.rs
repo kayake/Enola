@@ -78,4 +78,11 @@ impl Logger {
     pub fn nfnd(&self, message: &str, bold: bool) { self.log(LogLevel::NotFound, message, bold) }
     pub fn req(&self, message: &str, bold: bool) { self.log(LogLevel::Request, message, bold) }
     pub fn res(&self, message: &str, bold: bool) { self.log(LogLevel::Response, message, bold) }
+    pub fn input(&self, prompt: &str) -> String {
+        let mut input = String::new();
+        print!("[ \x1b[1mINPUT\x1b[0m ] {}: ", prompt);
+        io::stdout().flush().unwrap();
+        io::stdin().read_line(&mut input).expect("Failed to read line");
+        input.trim().to_string()
+    }
 }
