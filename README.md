@@ -1,7 +1,7 @@
 # Enola
 A powerful google-dork search tool
 
-## 1 Instalattion
+## 1 Installation
 
 ### 1.1  Debian/Kali/Ubuntu
 ```bash
