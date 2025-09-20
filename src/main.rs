@@ -118,7 +118,7 @@ async fn main() {
         _logger.warn("number of simultaneous requests greater than 3 may lead to rate limiting by Google", false);
         let input = _logger.input("Do you want to continue? [Y/n]").to_lowercase();
         if !input.starts_with('y') && !input.is_empty() {
-            return
+            return _logger.err("User interrupted", false);
         }
     }
 
@@ -126,7 +126,7 @@ async fn main() {
         _logger.warn("delay less than 1000 milliseconds may lead to rate limiting by Google", false);
         let input = _logger.input("Do you want to continue? [Y/n]").to_lowercase();
         if !input.starts_with('y') && !input.is_empty() {
-            return
+            return _logger.err("User interrupted", false);
         }
     }
     let responses: Arc<Mutex<Vec<Response>>> = Arc::new(Mutex::new(Vec::new()));
