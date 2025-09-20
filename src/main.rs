@@ -135,7 +135,7 @@ async fn main() {
     let time_approx = (builds.len() as u64 * _args.delay) / simultaneous_requests as u64 / 1000;
     _logger.inf(&format!("this may take approximately \x1b[35;1m{}\x1b[0m", time_format(time_approx)), false);
     let continues = _logger.input("Do you want to continue? [Y/n]").to_lowercase();
-    if !continues.starts_with('y') || !continues.is_empty() {
+    if !continues.starts_with('y') && !continues.is_empty() {
         return
     }
     let start_time = std::time::Instant::now();
