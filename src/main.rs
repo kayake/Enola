@@ -125,7 +125,7 @@ async fn main() {
     if _args.delay < 1000 {
         _logger.warn("delay less than 1000 milliseconds may lead to rate limiting by Google", false);
         let input = _logger.input("Do you want to continue? [Y/n]").to_lowercase();
-        if !input.starts_with('y') || !input.is_empty() {
+        if !input.starts_with('y') && !input.is_empty() {
             return
         }
     }
