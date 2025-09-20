@@ -7,7 +7,8 @@ use crate::core::query::{ Query, get_lines };
 use clap::Parser;
 use reqwest::header::HeaderMap;
 use reqwest::{Client, RequestBuilder, Response};
-use std::sync::{Mutex, Arc};
+use tokio::sync::{Mutex};
+use std::sync::Arc;
 use tokio::time::sleep;
 use futures::stream::{ StreamExt };
 
@@ -74,6 +75,7 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     let _args = Cli::parse();
+    let delay = _args.delay;
     let _logger = Arc::new(Logger::new(LogLevel::from(_args.verbose)));
     _logger.inf("loading queries..", false);
     let query: Vec<String> = if _args.queries.is_none() {
@@ -124,7 +126,7 @@ async fn main() {
         }
     }
 
-    if _args.delay < 1000 {
+    if delay < 1000 {
         _logger.warn("delay less than 1000 milliseconds may lead to rate limiting by Google", false);
         let input = _logger.input("Do you want to continue? [Y/n]").to_lowercase();
         if !input.starts_with('y') && !input.is_empty() {
@@ -134,7 +136,7 @@ async fn main() {
     let responses: Arc<Mutex<Vec<Response>>> = Arc::new(Mutex::new(Vec::new()));
     _logger.dbg(&format!("sending requests with {} simultaneous connections", simultaneous_requests), true);
 
-    let time_approx = (builds.len() as u64 * _args.delay) / simultaneous_requests as u64 / 1000;
+    let time_approx = (builds.len() as u64 * delay) / simultaneous_requests as u64 / 1000;
     _logger.inf(&format!("this may take approximately \x1b[35;1m{}\x1b[0m", time_format(time_approx)), false);
     let continues = _logger.input("Do you want to continue? [Y/n]").to_lowercase();
     if !continues.starts_with('y') && !continues.is_empty() {
@@ -146,25 +148,25 @@ async fn main() {
         .map(|build| {
             let responses = Arc::clone(&responses);
             let logger = Arc::clone(&_logger);
-            tokio::spawn(async move {
-                sleep(std::time::Duration::from_millis(_args.delay)).await;
+            async move {
+                sleep(std::time::Duration::from_millis(delay)).await;
                 match send_build(build).await {
                     Ok(response) => {
-                        responses.lock().unwrap().push(response);
+                        responses.lock().await.push(response);
                     },
                     Err(e) => {
                         logger.err(&format!("Request failed: {}", e), true);
                         return;
                     }
             }
-        })
+        }
     })
-    .buffer_unordered(simultaneous_requests);
+        .buffer_unordered(simultaneous_requests);
 stream.collect::<Vec<_>>().await;
 let duration = start_time.elapsed();
 _logger.inf(&format!("avarage {:.2} requests/min completed in {:.2?} (Percentage Error: {}%)", builds_len as f64 / duration.as_secs_f64(), time_format(duration.as_secs()), (duration.as_secs_f64() - time_approx as f64) / (time_approx as f64) * 100 as f64), true);
 _logger.inf("processing responses..", false);
-let _responses = Arc::try_unwrap(responses).unwrap().into_inner().unwrap();
+let _responses = Arc::try_unwrap(responses).unwrap().into_inner();
 _logger.dbg(&format!("{} responses loaded", _responses.len()), false);
 if _responses.is_empty() {
     _logger.err("no responses were received", true);
