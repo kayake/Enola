@@ -27,9 +27,11 @@ fn time_format(seconds: u64) -> String {
         parts.push(format!("{} second{}", secs, if secs > 1 { "s" } else { "" }));
     }  
 
-    let last = parts.len() - 1;
-    let value = std::mem::take(&mut parts[last]);
-    parts[last] = format!("and {}", value);
+    if parts.len() > 1 {
+        let last = parts.len() - 1;
+        let value = std::mem::take(&mut parts[last]);
+        parts[last] = format!("and {}", value);
+    }
 
     parts.join(", ")
 }
@@ -138,9 +140,10 @@ async fn main() {
     if !continues.starts_with('y') && !continues.is_empty() {
         return
     }
+    _logger.inf("starting requests..", false);
     let start_time = std::time::Instant::now();
     let stream = futures::stream::iter(builds)
-        .map(|build| async {
+        .map(|build| {
             let responses = Arc::clone(&responses);
             let logger = Arc::clone(&_logger);
             tokio::spawn(async move {
