@@ -1,10 +1,12 @@
 use reqwest::{Client, RequestBuilder, Response, Result};
 use scraper::{Html, Selector};
 use urlencoding::encode;
+use rand::{rng, seq::IndexedRandom};
 
-pub fn build_request_to_google(client: Client, query: &str) -> RequestBuilder {
+pub fn build_request_to_google(client: Client, query: &str, user_agent: String, proxy: String) -> RequestBuilder {
     let url = format!("https://google.com/search?q={}", encode(query));
     client.get(&url)
+    .header("User-Agent", user_agent);
 }
 
 pub async fn send_build(build: RequestBuilder) -> Result<Response> {
@@ -43,4 +45,36 @@ pub fn parse(text: &str) -> Vec<(String, String, String)> {
 
     results
     
+}
+
+pub struct RandomUserAgent {
+    user_agents: Vec<String>,
+}
+
+impl RandomUserAgent {
+    pub fn new(user_agents: Vec<String>) -> Self {
+        Self {
+            user_agents: user_agents
+        }
+    }
+
+    pub fn get_random(&self) -> String {
+        self.user_agents.choose(&mut rng()).unwrap().to_string()
+    }
+}
+
+pub struct RandomProxies {
+    proxies: Vec<String>,
+}
+
+impl RandomProxies {
+    pub fn new(proxies: Vec<String>) -> Self {
+        Self {
+            proxies: proxies
+        }
+    }
+
+    pub fn get_random(&self) -> String {
+        self.proxies.choose(&mut rng()).unwrap().to_string()
+    }
 }
