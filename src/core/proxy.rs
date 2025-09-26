@@ -1,0 +1,65 @@
+use reqwest::{Client, Proxy, Response, Error};
+use tokio::sync::{Semaphore, mpsc, Mutex};
+use std::sync::Arc;
+
+async fn build_client(proxy: &str, user_agent: &str) -> Client {
+    Client::builder()
+        .proxy(Proxy::all(proxy).unwrap())
+        .user_agent(user_agent)
+        .build()
+        .unwrap()
+}
+
+pub async fn worker(
+    id: usize,
+    proxy_url: &str,
+    user_agent: &str,
+    rx: Arc<Mutex<mpsc::Receiver<String>>>, // receiver compartilhado
+    tx: mpsc::Sender<String>,
+    log_tx: mpsc::Sender<String>,
+    result_tx: mpsc::Sender<(String, Result<Response, Error>)>,
+    semaphore: Arc<Semaphore>,
+) {
+    let client = build_client(proxy_url, user_agent).await;
+
+    loop {
+        let maybe_url = {
+            let mut locked_rx = rx.lock().await;
+            locked_rx.recv().await
+        };
+
+        let url = match maybe_url {
+            Some(u) => u,
+            None => {
+                let _ = log_tx.send(format!("Worker {}: Receiver closed", id)).await;
+                break;
+            }
+        };
+
+        let permit = semaphore.acquire().await.unwrap();
+
+        let result = client
+            .get(&url)
+            .header("Cookie", "CONSENT=YES+; SOCS=CAESHAgBEhIaAB")
+            .header("Accept", "*/*")
+            .send()
+            .await;
+
+        match &result {
+            Ok(res) if res.status().is_success() => {
+                let _ = log_tx
+                    .send(format!("Worker {}: Successfully fetched {}", id, url))
+                    .await;
+                let _ = result_tx.send((url.clone(), result)).await;
+            }
+            _ => {
+                let _ = log_tx
+                    .send(format!("Worker {}: Failed to fetch {}", id, url))
+                    .await;
+                let _ = tx.send(url.clone()).await;
+            }
+        }
+
+        drop(permit);
+    }
+}

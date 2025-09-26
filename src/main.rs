@@ -1,8 +1,9 @@
 mod core;
 
 use crate::core::logger::{ LogLevel, Logger };
-use crate::core::request::{ RandomUserAgent, RandomProxies, build_request_to_google, send_build, parse};
+use crate::core::request::{ RandomUserAgent, build_request_to_google, send_build, parse};
 use crate::core::query::{ Query, get_lines };
+use crate::core::proxy::worker;
 
 use clap::Parser;
 use reqwest::header::HeaderMap;
@@ -10,6 +11,7 @@ use reqwest::{Client, RequestBuilder, Response};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
+use tokio::sync::{mpsc, Mutex, Semaphore};
 
 fn time_format(seconds: u64) -> String {
     let hours = seconds / 3600;
@@ -97,6 +99,89 @@ async fn main() {
     }
 
     let user_agent: RandomUserAgent = RandomUserAgent::new(user_agents);
+
+    if let Some(proxies) = args.proxies {
+    logger.inf("loading proxies...", false);
+    let proxies = get_lines(&proxies).unwrap();
+    if proxies.is_empty() {
+        logger.err("no proxies were found", true);
+        return;
+    }
+    logger.dbg(&format!("{} proxy(ies) were loaded", proxies.len()), true);
+    logger.inf("starting workers...", false);
+
+    let (tx, rx) = mpsc::channel::<String>(100);
+    let (log_tx, mut log_rx) = mpsc::channel::<String>(100);
+    let (result_tx, mut result_rx) = mpsc::channel::<(String, Result<Response, reqwest::Error>)>(100);
+    let semaphore = Arc::new(Semaphore::new(args.simultaneous_requests));
+
+    let rx = Arc::new(Mutex::new(rx));
+
+    for q in query.clone().into_iter() {
+        tx.send(q).await.unwrap();
+    };
+    for (i, proxy) in proxies.iter().enumerate() {
+        let worker_tx = tx.clone();
+        let worker_rx = rx.clone(); 
+        let worker_log_tx = log_tx.clone();
+        let worker_result_tx = result_tx.clone();
+        let worker_semaphore = semaphore.clone();
+        let proxy_url = proxy.clone();
+        let user_agent_str = user_agent.get_random();
+
+        tokio::spawn(async move {
+            worker(
+                i,
+                &proxy_url,
+                &user_agent_str,
+                worker_rx,
+                worker_tx,
+                worker_log_tx,
+                worker_result_tx,
+                worker_semaphore,
+            )
+            .await;
+        });
+    }
+
+
+    let logger_for_log = Arc::clone(&logger);
+    tokio::spawn(async move {
+        while let Some(log) = log_rx.recv().await {
+            logger_for_log.dbg(&log, false);
+        }
+    });
+
+    let logger_for_result = Arc::clone(&logger);
+    tokio::spawn(async move {
+        while let Some((url, result)) = result_rx.recv().await {
+            match result {
+                Ok(res) if res.status().is_success() => {
+                    let text = res.text().await.unwrap();
+                    let parsed = parse(&text);
+                    if parsed.is_empty() {
+                        logger_for_result.nfnd(&format!("No results found for {}", url), true);
+                        continue;
+                    }
+                    for (title, link, description) in parsed {
+                        if !title.is_empty() && !link.is_empty() && !description.is_empty() {
+                            logger_for_result.fnd(
+                                format!("{} - {} ({})", title, description, link).as_str(),
+                                true,
+                                );
+                            }
+                        }
+                    }
+                    Ok(_) => {
+                        logger_for_result.warn(&format!("Received non-success response for {}", url), true);
+                    }
+                    Err(_) => todo!(),
+                }
+            }
+        });
+        tokio::signal::ctrl_c().await.unwrap();
+        logger.inf("Received Ctrl+C, shutting down...", true);
+    }
 
     logger.dbg(&format!("{} build(s) were loaded", query.len()), true);
     logger.inf("creating client...", false);
