@@ -4,9 +4,9 @@ use std::path::Path;
 use std::env;
 
 pub fn save_results(target: &str, results: &Vec<(String, String, String)>) -> Result<(), Error> {
-    let file_path = format!(".results/{}.txt", target);
-    if !Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(".results")).exists() {
-        create_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(".results")))?;
+    let file_path = format!("results/{}.txt", target);
+    if !Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new("results")).exists() {
+        create_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new("results")))?;
     }
     let mut file = File::create(Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(&file_path)))?;
     
@@ -17,9 +17,9 @@ pub fn save_results(target: &str, results: &Vec<(String, String, String)>) -> Re
 }
 
 pub fn save_results_simple(target: &str, results: &Vec<String>) -> Result<(), Error> {
-    let file_path = format!(".results/{}.txt", target);
-    if !Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(".results")).exists() {
-        create_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(".results")))?;
+    let file_path = format!("results/{}.txt", target);
+    if !Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new("results")).exists() {
+        create_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new("results")))?;
     }
     let mut file = File::create(Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(&file_path)))?;
     for line in results {
@@ -29,5 +29,5 @@ pub fn save_results_simple(target: &str, results: &Vec<String>) -> Result<(), Er
 }
 
 pub fn is_results_exists(target: &str) -> bool {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(&format!(".results/{}", target))).exists()
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(&format!("results/{}", target))).exists()
 }
