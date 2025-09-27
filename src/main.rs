@@ -354,6 +354,7 @@ async fn run_api_mode(
 
     logger.inf("starting requests...", false);
     let start_time = Instant::now();
+    let semaphore = Arc::new(Semaphore::new(args.simultaneous_requests));
 
     let (log_tx, mut log_rx) = mpsc::channel::<LogMessage>(100);
     let logger_for_logs = Arc::clone(logger);
@@ -370,8 +371,9 @@ async fn run_api_mode(
     let results: Vec<_> = stream::iter(builds.into_iter().map(|build| {
         let client_ = client.clone();
         let log_tx = log_tx.clone();
+        let sem = Arc::clone(&semaphore);
         async move {
-            // Log the request being sent
+            let _permit = sem.acquire().await.unwrap();
             let url = build.url().to_string();
             let _ = log_tx
                 .send(LogMessage::Request(format!("Sending request to {}", url)))
