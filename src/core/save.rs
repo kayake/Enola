@@ -29,5 +29,5 @@ pub fn save_results_simple(target: &str, results: &Vec<String>) -> Result<(), Er
 }
 
 pub fn is_results_exists(target: &str) -> bool {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(&format!("results/{}", target))).exists()
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(&format!("results/{}.txt", target))).exists()
 }
