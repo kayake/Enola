@@ -394,9 +394,6 @@ async fn run_api_mode(
     .collect()
     .await;
 
-    
-    drop(log_tx); 
-
     let duration = start_time.elapsed();
     logger.inf(
         &format!(
