@@ -1,13 +1,13 @@
 mod core;
 
 use crate::core::logger::{LogLevel, Logger};
-use crate::core::request::{ApiMode, RandomUserAgent, send_build, parse};
+use crate::core::request::{ApiMode, RandomUserAgent, exec, parse};
 use crate::core::query::{get_lines, Query};
 use crate::core::proxy::worker;
 use crate::core::save::{is_results_exists, save_results, save_results_simple};
 
 use clap::Parser;
-use reqwest::{Client, RequestBuilder, Response};
+use reqwest::{Client, Request, Response};
 use std::env::current_dir;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -285,6 +285,12 @@ async fn run_proxy_mode(
     Ok(())
 }
 
+#[derive(Debug)]
+enum LogMessage {
+    Request(String),
+    Response(String),
+}
+
 async fn run_api_mode(
     args: &Cli,
     target: &str,
@@ -326,8 +332,11 @@ async fn run_api_mode(
     let manager = ApiMode::new(target.to_string());
     let builds = sites
         .iter()
-        .map(|site| manager.build(site, client.clone(), user_agent.get_random()))
-        .collect::<Vec<RequestBuilder>>();
+        .map(|site| {
+            let client_ = client.clone();
+            manager.build(site, &client_, user_agent.get_random())
+        })
+        .collect::<Vec<Request>>();
     logger.dbg(&format!("{} build(s) were loaded", builds.len()), true);
 
     let time_approx = builds.len() as u64 * args.delay / args.simultaneous_requests as u64;
@@ -345,12 +354,52 @@ async fn run_api_mode(
 
     logger.inf("starting requests...", false);
     let start_time = Instant::now();
-    let results: Vec<_> = stream::iter(builds.into_iter().map(|build| async move {
-        send_build(build).await
+
+    // Create a channel for non-blocking logging
+    let (log_tx, mut log_rx) = mpsc::channel::<LogMessage>(100);
+    let logger_for_logs = Arc::clone(logger);
+
+    // Spawn a task to handle log messages
+    tokio::spawn(async move {
+        while let Some(log) = log_rx.recv().await {
+            match log {
+                LogMessage::Request(msg) => logger_for_logs.req(&msg, true),
+                LogMessage::Response(msg) => logger_for_logs.res(&msg, true),
+            }
+        }
+    });
+
+    // Process requests and log when each is sent and response is received
+    let results: Vec<_> = stream::iter(builds.into_iter().map(|build| {
+        let client_ = client.clone();
+        let log_tx = log_tx.clone();
+        async move {
+            // Log the request being sent
+            let url = build.url().to_string();
+            let _ = log_tx
+                .send(LogMessage::Request(format!("Sending request to {}", url)))
+                .await
+                .map_err(|e| eprintln!("Failed to send log: {}", e));
+
+            // Execute the request and log the response
+            let result = exec(&client_, build).await;
+            let _ = log_tx
+                .send(LogMessage::Response(match &result {
+                    Ok(res) => format!("Received response for {} with status: {}", url, res.status()),
+                    Err(e) => format!("Error receiving response for {}: {}", url, e),
+                }))
+                .await
+                .map_err(|e| eprintln!("Failed to send log: {}", e));
+
+            result
+        }
     }))
     .buffer_unordered(args.simultaneous_requests)
     .collect()
     .await;
+
+    // Ensure the logging channel is closed after all requests and responses
+    drop(log_tx); // Close the sender to allow the logging task to complete
 
     let duration = start_time.elapsed();
     logger.inf(
@@ -387,21 +436,9 @@ async fn run_api_mode(
                     found_urls.push(url.to_string());
                 }
             }
-            Ok(res) => {
-                logger.warn(
-                    &format!("Received non-success response for {}: {}", res.url(), res.status()),
-                    true,
-                );
-            }
+            Ok(_) => {}
             Err(e) => {
-                logger.err(
-                    &format!(
-                        "Error occurred: {} => {}",
-                        e,
-                        e.url().unwrap_or(&"Unknown URL".parse().unwrap())
-                    ),
-                    true,
-                );
+                logger.res(&format!("Error occurred: {}", e), true);
             }
         }
     }
