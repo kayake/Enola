@@ -355,11 +355,9 @@ async fn run_api_mode(
     logger.inf("starting requests...", false);
     let start_time = Instant::now();
 
-    // Create a channel for non-blocking logging
     let (log_tx, mut log_rx) = mpsc::channel::<LogMessage>(100);
     let logger_for_logs = Arc::clone(logger);
 
-    // Spawn a task to handle log messages
     tokio::spawn(async move {
         while let Some(log) = log_rx.recv().await {
             match log {
@@ -369,7 +367,6 @@ async fn run_api_mode(
         }
     });
 
-    // Process requests and log when each is sent and response is received
     let results: Vec<_> = stream::iter(builds.into_iter().map(|build| {
         let client_ = client.clone();
         let log_tx = log_tx.clone();
@@ -381,7 +378,6 @@ async fn run_api_mode(
                 .await
                 .map_err(|e| eprintln!("Failed to send log: {}", e));
 
-            // Execute the request and log the response
             let result = exec(&client_, build).await;
             let _ = log_tx
                 .send(LogMessage::Response(match &result {
@@ -398,8 +394,8 @@ async fn run_api_mode(
     .collect()
     .await;
 
-    // Ensure the logging channel is closed after all requests and responses
-    drop(log_tx); // Close the sender to allow the logging task to complete
+    
+    drop(log_tx); 
 
     let duration = start_time.elapsed();
     logger.inf(
