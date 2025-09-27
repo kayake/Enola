@@ -1,13 +1,8 @@
-use reqwest::{Client, RequestBuilder, Response, Result};
+use reqwest::{Client, Method, RequestBuilder, Response, Result};
 use scraper::{Html, Selector};
 use urlencoding::encode;
 use rand::{rng, seq::IndexedRandom};
 
-pub fn build_request_to_google(client: Client, query: &str, user_agent: String) -> RequestBuilder {
-    let url = format!("https://google.com/search?q={}", encode(query));
-    client.get(&url)
-        .header("User-Agent", user_agent)
-}
 
 pub async fn send_build(build: RequestBuilder) -> Result<Response> {
         build.send().await
@@ -60,5 +55,37 @@ impl RandomUserAgent {
 
     pub fn get_random(&self) -> String {
         self.user_agents.choose(&mut rng()).unwrap().to_string()
+    }
+}
+
+pub struct ApiMode {
+    target: String,
+}
+
+impl ApiMode {
+    pub fn new(target: String) -> Self {
+        Self {
+            target
+        }
+    }
+
+    pub fn build(&self, query: &str, client: Client, user_agent: String) -> RequestBuilder {
+        let parts: Vec<&str> = query.splitn(3, ' ').collect();
+        if parts.len() != 3 {
+            panic!("Invalid API mode query format. Expected: <METHOD> <SITE> <DATA>");
+        }
+        let method = parts[0];
+        let site = parts[1];
+        let data = parts[2];
+        let user_agent = user_agent;
+        let site = site.replace("USER", &encode(self.target.as_str()));
+        let method = Method::from_bytes(method.as_bytes()).expect("Invalid HTTP method");
+        let build: RequestBuilder = client.request(method, &site)
+                                        .header("User-Agent", user_agent);
+        if !data.is_empty() {
+            return build.body(data.to_string());
+        }
+
+        build
     }
 }

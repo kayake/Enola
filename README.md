@@ -40,13 +40,16 @@ cargo build && cd target/debug/
 
 ### 2.1 Mode
 
-### 2.1.1 API Mode
+### 2.1.1 Google Dork Mode
 
-Enable API search engine sites:
+Enabling this future, it will create payload dorks for more accurate search
 
 ```bash
-enola --target foo --apimode
+enola --target foo --google-dork-mode
 ```
+
+> [!IMPORTANT]
+> If there is a custom Query, Payload, Sites (to put in dork), etc. You should use them by adding `--queries`, `--sites`, `--paylods`. For more information, use `--help`.
 
 ### 2.2 Settings
 
@@ -55,7 +58,7 @@ enola --target foo --apimode
 If you already have queries prepared, use them:
 
 ```bash
-enola --query myquery.txt
+enola --target foo --query myquery.txt
 ```
 
 #### 2.2.2 Payload
@@ -63,7 +66,7 @@ enola --query myquery.txt
 Use a single dork payload with `SITE` and `STRING` placeholders:
 
 ```bash
-enola --payload "intitle:STRING inurl:SITE"
+enola --target foo --payload "intitle:STRING inurl:SITE"
 ```
 
 #### 2.2.3 Payloads / Sites
@@ -71,7 +74,15 @@ enola --payload "intitle:STRING inurl:SITE"
 Use lists of sites and payloads instead of the default ones:
 
 ```bash
-enola --sites mysites.txt --payloads mypayloads.txt
+enola --target foo --sites mysites.txt --payloads mypayloads.txt
+```
+
+#### 2.3.4 API Sites
+
+Use lists of third sites' search engine:
+
+```bash
+enola --target foo --api-sites
 ```
 
 ### 2.3 Advanced Settings

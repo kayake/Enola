@@ -1,17 +1,18 @@
 mod core;
 
-use crate::core::logger::{ LogLevel, Logger };
-use crate::core::request::{ RandomUserAgent, build_request_to_google, send_build, parse};
-use crate::core::query::{ Query, get_lines };
+use crate::core::logger::{LogLevel, Logger};
+use crate::core::request::{ApiMode, RandomUserAgent, send_build, parse};
+use crate::core::query::{get_lines, Query};
 use crate::core::proxy::worker;
+use crate::core::save::{is_results_exists, save_results, save_results_simple};
 
 use clap::Parser;
-use reqwest::header::HeaderMap;
 use reqwest::{Client, RequestBuilder, Response};
+use std::env::current_dir;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::time::sleep;
 use tokio::sync::{mpsc, Mutex, Semaphore};
+use futures::stream::{self, StreamExt};
 
 fn time_format(seconds: u64) -> String {
     let hours = seconds / 3600;
@@ -27,7 +28,7 @@ fn time_format(seconds: u64) -> String {
     }
     if secs > 0 || parts.is_empty() {
         parts.push(format!("{} second{}", secs, if secs > 1 { "s" } else { "" }));
-    }  
+    }
 
     if parts.len() > 1 {
         let last = parts.len() - 1;
@@ -43,86 +44,158 @@ fn time_format(seconds: u64) -> String {
 #[command(version = "1.0.0")]
 #[command(about = "A powerful search tool", long_about = "Enola uses Google Dorks to get information")]
 struct Cli {
-    #[arg(short='t', long, help="Target", help_heading="Target")]
+    #[arg(short = 't', long, help = "Target", help_heading = "Target")]
     target: String,
 
-    #[arg(short='v', long, help="Verbose Level (1-7)", value_parser=clap::value_parser!(u8).range(1..=8), help_heading="Miscellaneous", default_value_t=5)]
+    #[arg(
+        short = 'v',
+        long,
+        help = "Verbose Level (1-7)",
+        value_parser = clap::value_parser!(u8).range(1..=8),
+        help_heading = "Miscellaneous",
+        default_value_t = 5
+    )]
     verbose: u8,
 
-    #[arg(short='p', long, help="Provide your Dork", help_heading="Settings")]
+    #[arg(short = 'p', long, help = "Provide your Dork", help_heading = "Settings")]
     payload: Option<String>,
 
-    #[arg(short='P', long, help="Provide the list of Dorks", help_heading="Settings", default_value_t=String::from("src/utils/dorks/payloads/general.txt"))]
+    #[arg(
+        short = 'P',
+        long,
+        help = "Provide the list of Dorks",
+        help_heading = "Settings",
+        default_value_t = String::from("src/utils/dorks/payloads/general.txt")
+    )]
     payloads: String,
-    #[arg(short='s', long, help="Provide the list of Sites", help_heading="Settings", default_value_t=String::from("src/utils/dorks/sites/all.txt"))]
+
+    #[arg(
+        short = 's',
+        long,
+        help = "Provide the list of Sites",
+        help_heading = "Settings",
+        default_value_t = String::from("src/utils/dorks/sites/all.txt")
+    )]
     sites: String,
-
-    #[arg(short='q', long, help="Provide queries", help_heading="Settings")]
+    
+    #[arg(short = 'q', long, help = "Provide queries", help_heading = "Settings")]
     queries: Option<String>,
-
-    #[arg(short='c', long="connections", help="Number of simultaneous requests (Only for API-Mode)", help_heading="Request", default_value_t=3)]
+    
+    #[arg(
+        short,
+        long = "api-sites",
+        help = "Use APIs search engine's site",
+        help_heading = "Settings",
+        default_value_t = String::from("src/utils/apis/profile_urls.txt")
+    )]
+    api_sites: String,
+    #[arg(
+        short = 'c',
+        long = "connections",
+        help = "Number of simultaneous requests (Only for API-Mode)",
+        help_heading = "Request",
+        default_value_t = 3
+    )]
     simultaneous_requests: usize,
 
-    #[arg(long, help="Proxy List", help_heading="Request")]
+    #[arg(long, help = "Proxy List", help_heading = "Request")]
     proxies: Option<String>,
 
-    #[arg(short='U', long="user-agents", help="Provide an User-Agents list", help_heading="Request", default_value_t=String::from("src/utils/request/user_agents.txt"))]
+    #[arg(
+        short = 'U',
+        long = "user-agents",
+        help = "Provide an User-Agents list",
+        help_heading = "Request",
+        default_value_t = String::from("src/utils/request/user_agents.txt")
+    )]
     user_agent_list: String,
 
-    #[arg(short='d', long, help="Delay between requests (in milliseconds)", help_heading="Request", default_value_t=5000)]
+    #[arg(
+        short = 'd',
+        long,
+        help = "Delay between requests (in milliseconds)",
+        help_heading = "Request",
+        default_value_t = 5000
+    )]
     delay: u64,
 
-    #[arg(short, long="apimode", help="Use APIs search engine's site", help_heading="Mode", default_value_t=false)]
-    apimode: bool,
+    #[arg(
+        short,
+        long = "google-dork-mode",
+        help = "Use Google Dork (only with Proxy)",
+        help_heading = "Mode",
+        default_value_t = false
+    )]
+    google_dork_mode: bool,
+
 }
 
-#[tokio::main]
-async fn main() {
-    let args = Cli::parse();
-    let delay = args.delay;
-    let logger = Arc::new(Logger::new(LogLevel::from(args.verbose)));
+async fn run_proxy_mode(
+    args: &Cli,
+    target: &str,
+    logger: &Arc<Logger>,
+    user_agent: &RandomUserAgent,
+) -> Result<(), String> {
+    logger.inf("Google dork mode enabled", true);
     logger.inf("loading queries...", false);
     let query: Vec<String> = if args.queries.is_none() {
-        Query::new(&args.sites, &args.payloads, &args.target).build().unwrap()
+        Query::new(&args.sites, &args.payloads, target)
+            .build()
+            .map_err(|e| format!("Failed to build queries: {}", e))?
     } else {
-        get_lines(args.queries.as_deref().unwrap()).unwrap()
+        get_lines(args.queries.as_deref().unwrap()).map_err(|e| format!("Failed to load queries: {}", e))?
     };
 
-    logger.inf(&format!("loading user-agents from {}...", args.user_agent_list), false);
-    let user_agents = get_lines(&args.user_agent_list.to_string()).unwrap();
-    if user_agents.is_empty() {
-        logger.warn("no user-agents were found", true);
+    if args.simultaneous_requests > 3 {
+        logger.warn(
+            "Using more than 3 simultaneous requests with proxies may increase RAM usage",
+            true,
+        );
         let input = logger.input("Do you want to continue? [Y/n]").to_lowercase();
         if !input.starts_with('y') && !input.is_empty() {
-            return logger.err("User interrupted", false);
+            return Err("User interrupted".to_string());
         }
     }
 
-    let user_agent: RandomUserAgent = RandomUserAgent::new(user_agents);
-
-    if let Some(proxies) = args.proxies {
     logger.inf("loading proxies...", false);
-    let proxies = get_lines(&proxies).unwrap();
+    let proxies = get_lines(args.proxies.as_ref().unwrap()).map_err(|e| format!("Failed to load proxies: {}", e))?;
     if proxies.is_empty() {
         logger.err("no proxies were found", true);
-        return;
+        return Err("No proxies found".to_string());
     }
     logger.dbg(&format!("{} proxy(ies) were loaded", proxies.len()), true);
+
+    let time_approx = query.len() / args.simultaneous_requests;
+    logger.inf(
+        &format!(
+            "with {} proxies and {} simultaneous requests, this may take approximately \x1b[35;1m{}\x1b[0m",
+            proxies.len(),
+            args.simultaneous_requests,
+            time_format(time_approx as u64)
+        ),
+        false,
+    );
+    let continues = logger.input("Do you want to continue? [Y/n]").to_lowercase();
+    if !continues.starts_with('y') && !continues.is_empty() {
+        return Err("User interrupted".to_string());
+    }
+
     logger.inf("starting workers...", false);
+    let start_time = Instant::now();
 
     let (tx, rx) = mpsc::channel::<String>(100);
     let (log_tx, mut log_rx) = mpsc::channel::<String>(100);
     let (result_tx, mut result_rx) = mpsc::channel::<(String, Result<Response, reqwest::Error>)>(100);
     let semaphore = Arc::new(Semaphore::new(args.simultaneous_requests));
-
     let rx = Arc::new(Mutex::new(rx));
 
-    for q in query.clone().into_iter() {
-        tx.send(q).await.unwrap();
-    };
+    for q in query.clone() {
+        tx.send(q).await.map_err(|e| format!("Failed to send query: {}", e))?;
+    }
+
     for (i, proxy) in proxies.iter().enumerate() {
         let worker_tx = tx.clone();
-        let worker_rx = rx.clone(); 
+        let worker_rx = rx.clone();
         let worker_log_tx = log_tx.clone();
         let worker_result_tx = result_tx.clone();
         let worker_semaphore = semaphore.clone();
@@ -144,20 +217,21 @@ async fn main() {
         });
     }
 
-
-    let logger_for_log = Arc::clone(&logger);
+    let logger_for_log = Arc::clone(logger);
     tokio::spawn(async move {
         while let Some(log) = log_rx.recv().await {
-            logger_for_log.dbg(&log, false);
+            logger_for_log.req(&log, false);
         }
     });
 
-    let logger_for_result = Arc::clone(&logger);
+    let logger_for_result = Arc::clone(logger);
+    let target_for_save = target.to_string();
     tokio::spawn(async move {
         while let Some((url, result)) = result_rx.recv().await {
             match result {
                 Ok(res) if res.status().is_success() => {
-                    let text = res.text().await.unwrap();
+                    logger_for_result.res(&format!("Status {:?} for {}", res.status(), url), true);
+                    let text = res.text().await.unwrap_or_default();
                     let parsed = parse(&text);
                     if parsed.is_empty() {
                         logger_for_result.nfnd(&format!("No results found for {}", url), true);
@@ -166,104 +240,231 @@ async fn main() {
                     for (title, link, description) in parsed {
                         if !title.is_empty() && !link.is_empty() && !description.is_empty() {
                             logger_for_result.fnd(
-                                format!("{} - {} ({})", title, description, link).as_str(),
+                                &format!("{} - {} ({})", title, description, link),
                                 true,
-                                );
-                            }
+                            );
+                            save_results(&target_for_save, &vec![(title.clone(), link.clone(), description.clone())])
+                                .unwrap_or_else(|e| {
+                                    logger_for_result.err(&format!("Failed to save results: {}", e), true);
+                                });
                         }
                     }
-                    Ok(_) => {
-                        logger_for_result.warn(&format!("Received non-success response for {}", url), true);
-                    }
-                    Err(_) => todo!(),
+                }
+                Ok(res) => {
+                    logger_for_result.warn(&format!("Received non-success response for {}: {}", url, res.status()), true);
+                }
+                Err(e) => {
+                    logger_for_result.err(&format!("Request failed for {}: {}", url, e), true);
                 }
             }
-        });
-        tokio::signal::ctrl_c().await.unwrap();
-        logger.inf("Received Ctrl+C, shutting down...", true);
-    }
+        }
+    });
 
-    logger.dbg(&format!("{} build(s) were loaded", query.len()), true);
-    logger.inf("creating client...", false);
-    let mut headers = HeaderMap::new();
+    tokio::signal::ctrl_c().await.unwrap();
+    logger.inf("Received Ctrl+C, shutting down...", true);
+    let duration = start_time.elapsed();
+    logger.inf(
+        &format!(
+            "average {:.2} requests/min completed in {} (Percentage Error: {}%)",
+            query.len() as f64 / duration.as_secs_f64(),
+            time_format(duration.as_secs()),
+            (duration.as_secs_f64() - time_approx as f64) / (time_approx as f64) * 100.0
+        ),
+        true,
+    );
+    logger.inf("All tasks completed!", true);
+    logger.inf(
+        &format!(
+            "Results saved to {}/results/{}.txt",
+            current_dir().unwrap().display(),
+            target.replace("/", "_")
+        ),
+        true,
+    );
 
-    headers.insert("Cookie", "CONSENT=YES+; SOCS=CAESHAgBEhIaAB".parse().unwrap());
-    headers.insert("Accept", "*/*".parse().unwrap());
+    Ok(())
+}
 
-    let client: Client = Client::builder()
-        .default_headers(headers)
-        .tcp_keepalive(Some(std::time::Duration::from_secs(15)))
-        .tcp_nodelay(true)
-        .tcp_keepalive_interval(Some(std::time::Duration::from_secs(15)))
-        .tcp_keepalive_retries(3)
-        .build()
-        .expect("Failed to build reqwest client");
-
-    logger.dbg("client created", true);
-    logger.inf("building requests..", false);
-    let builds: Vec<RequestBuilder> = query
-        .iter()
-        .map(|q| build_request_to_google(client.clone(), q, user_agent.get_random()))
-        .collect();
-
-    let builds_len = builds.len();
-
-    logger.inf(&format!("Done | {} request(s) were built", builds.len()), true);
-
-    if delay < 1000 {
-        logger.warn("delay less than 1000 milliseconds may lead to rate limiting by Google", false);
+async fn run_api_mode(
+    args: &Cli,
+    target: &str,
+    logger: &Arc<Logger>,
+    user_agent: &RandomUserAgent,
+) -> Result<(), String> {
+    if args.simultaneous_requests > 5 {
+        logger.warn(
+            "Using more than 5 simultaneous requests may increase RAM usage",
+            true,
+        );
         let input = logger.input("Do you want to continue? [Y/n]").to_lowercase();
         if !input.starts_with('y') && !input.is_empty() {
-            return logger.err("User interrupted", false);
+            return Err("User interrupted".to_string());
         }
     }
 
-    let time_approx = (builds_len as u64 * delay) / 1000;
-    logger.inf(&format!("this may take approximately \x1b[35;1m{}\x1b[0m", time_format(time_approx)), false);
+    if args.payload.is_some() {
+        logger.warn("Payload will be ignored in API mode", true);
+    }
+
+    logger.inf(&format!("loading sites from {}...", args.api_sites), false);
+    let sites = get_lines(&args.api_sites).map_err(|e| format!("Failed to load sites: {}", e))?;
+    if sites.is_empty() {
+        logger.err("no sites were found", true);
+        return Err("No sites found".to_string());
+    }
+
+    logger.dbg(&format!("{} site(s) were loaded", sites.len()), true);
+    logger.inf("creating client...", false);
+    let client = Client::builder()
+        .tcp_keepalive(Some(Duration::from_secs(15)))
+        .tcp_nodelay(true)
+        .tcp_keepalive_interval(Some(Duration::from_secs(15)))
+        .tcp_keepalive_retries(3)
+        .build()
+        .map_err(|e| format!("Failed to build reqwest client: {}", e))?;
+
+    let manager = ApiMode::new(target.to_string());
+    let builds = sites
+        .iter()
+        .map(|site| manager.build(site, client.clone(), user_agent.get_random()))
+        .collect::<Vec<RequestBuilder>>();
+    logger.dbg(&format!("{} build(s) were loaded", builds.len()), true);
+
+    let time_approx = builds.len() as u64 * args.delay / args.simultaneous_requests as u64;
+    logger.inf(
+        &format!(
+            "this may take approximately \x1b[35;1m{}\x1b[0m",
+            time_format(time_approx)
+        ),
+        false,
+    );
     let continues = logger.input("Do you want to continue? [Y/n]").to_lowercase();
     if !continues.starts_with('y') && !continues.is_empty() {
-        return
+        return Err("User interrupted".to_string());
     }
-    logger.inf("starting requests..", false);
+
+    logger.inf("starting requests...", false);
     let start_time = Instant::now();
+    let results: Vec<_> = stream::iter(builds.into_iter().map(|build| async move {
+        send_build(build).await
+    }))
+    .buffer_unordered(args.simultaneous_requests)
+    .collect()
+    .await;
 
-    let mut responses: Vec<Response> = Vec::new();
-
-    for build in builds {
-        sleep(Duration::from_millis(delay)).await;
-        logger.req(&format!("Sending request {:?}", build), false);
-        let res: Response = send_build(build).await.unwrap();
-        logger.res(&format!("Received response: {} {}", res.status(), res.url()), true);
-        responses.push(res);
-    }
-    
     let duration = start_time.elapsed();
-    logger.inf(&format!(
-        "avarage {:.2} requests/min completed in {:.2?} (Percentage Error: {}%)", 
-        builds_len as f64 / duration.as_secs_f64(), 
-        time_format(duration.as_secs()), 
-        (duration.as_secs_f64() - time_approx as f64) / (time_approx as f64) * 100 as f64
-        ), 
-        true
+    logger.inf(
+        &format!(
+            "average {:.2} requests/min completed in {} (Percentage Error: {}%)",
+            results.len() as f64 / duration.as_secs_f64(),
+            time_format(duration.as_secs()),
+            (duration.as_secs_f64() - time_approx as f64) / (time_approx as f64) * 100.0
+        ),
+        true,
     );
-    logger.inf("processing responses..", false);
-    logger.dbg(&format!("{} responses loaded", responses.len()), false);
-    if responses.is_empty() {
+
+    logger.inf("processing responses...", false);
+    if results.is_empty() {
         logger.err("no responses were received", true);
-        return;
+        return Err("No responses received".to_string());
     }
-    for response in responses {
-        let status = response.status();
-        let url = response.url().clone();
-        let text = parse(response.text().await.unwrap().as_str());
-        if text.is_empty() {
-            logger.nfnd(&format!("No results found for {} => {}", url, status), true);
-            continue;
-        }
-        for (title, link, description) in text {
-            if !title.is_empty() && !link.is_empty() && !description.is_empty() {
-                logger.fnd(format!("{} - {} ({}) => {}", title, description, link, status).as_str(), true);
+
+    logger.dbg(&format!("{} responses loaded", results.len()), false);
+    let mut found_urls = Vec::new();
+    for result in results {
+        match result {
+            Ok(res) if res.status().is_success() => {
+                let url = res.url().clone();
+                let status = res.status();
+                let text = res.text().await.unwrap_or_default();
+                if text.contains("Not Found") || text.contains("404") {
+                    logger.nfnd(&format!("No results found for {}", url), true);
+                } else {
+                    logger.fnd(
+                        &format!("Results found for {} => \x1b[35;1m{}\x1b[0m", url, status),
+                        true,
+                    );
+                    found_urls.push(url.to_string());
+                }
             }
+            Ok(res) => {
+                logger.warn(
+                    &format!("Received non-success response for {}: {}", res.url(), res.status()),
+                    true,
+                );
+            }
+            Err(e) => {
+                logger.err(
+                    &format!(
+                        "Error occurred: {} => {}",
+                        e,
+                        e.url().unwrap_or(&"Unknown URL".parse().unwrap())
+                    ),
+                    true,
+                );
             }
         }
+    }
+
+    save_results_simple(target, &found_urls).unwrap_or_else(|e| {
+        logger.err(&format!("Failed to save results: {}", e), true);
+    });
+
+    logger.inf("All tasks completed!", true);
+    logger.inf(
+        &format!(
+            "Results saved to {}/results/{}.txt",
+            current_dir().unwrap().display(),
+            target.replace("/", "_")
+        ),
+        true,
+    );
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    let args = Cli::parse();
+    let logger = Arc::new(Logger::new(LogLevel::from(args.verbose)));
+    let target = args.target.clone();
+
+    if is_results_exists(&target) {
+        logger.warn(
+            &format!(
+                "Results for {} already exists in {}/results/{}",
+                target,
+                current_dir().unwrap().display(),
+                target
+            ),
+            true,
+        );
+        let input = logger.input("Do you want to continue? [Y/n]").to_lowercase();
+        if !input.starts_with('y') && !input.is_empty() {
+            logger.err("User interrupted", false);
+            return;
+        }
+    }
+
+    logger.inf(&format!("loading user-agents from {}...", args.user_agent_list), false);
+    let user_agents = get_lines(&args.user_agent_list).unwrap_or_default();
+    if user_agents.is_empty() {
+        logger.warn("no user-agents were found", true);
+        let input = logger.input("Do you want to continue? [Y/n]").to_lowercase();
+        if !input.starts_with('y') && !input.is_empty() {
+            logger.err("User interrupted", false);
+            return;
+        }
+    }
+    let user_agent = RandomUserAgent::new(user_agents);
+
+    let result = if args.proxies.is_some() && args.google_dork_mode {
+        run_proxy_mode(&args, &target, &logger, &user_agent).await
+    } else {
+        run_api_mode(&args, &target, &logger, &user_agent).await
+    };
+
+    if let Err(e) = result {
+        logger.err(&format!("Error: {}", e), true);
+    }
 }
