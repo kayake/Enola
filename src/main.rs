@@ -57,6 +57,14 @@ struct Cli {
     )]
     verbose: u8,
 
+    #[arg(
+        short = 'o',
+        long,
+        help = "Output path for results",
+        help_heading = "Settings"
+    )]
+    output_path: Option<String>,
+
     #[arg(short = 'p', long, help = "Provide your Dork", help_heading = "Settings")]
     payload: Option<String>,
 
@@ -100,6 +108,15 @@ struct Cli {
 
     #[arg(long, help = "Proxy List", help_heading = "Request")]
     proxies: Option<String>,
+
+    #[arg(
+        short = 'w',
+        long = "workers",
+        help = "Number of workers (Only for Proxy-Mode)",
+        help_heading = "Request",
+        default_value_t = 5
+    )]
+    workers: usize,
 
     #[arg(
         short = 'U',
@@ -193,19 +210,26 @@ async fn run_proxy_mode(
         tx.send(q).await.map_err(|e| format!("Failed to send query: {}", e))?;
     }
 
-    for (i, proxy) in proxies.iter().enumerate() {
+    let proxies = get_lines(&args.proxies.as_deref().unwrap())
+        .map_err(|e| format!("Failed to load proxies: {}", e))?;
+    if proxies.is_empty() {
+        logger.err("no proxies were found", true);
+        return Err("No proxies found".to_string());
+    }
+
+    for i in 0..args.workers {
         let worker_tx = tx.clone();
         let worker_rx = rx.clone();
         let worker_log_tx = log_tx.clone();
         let worker_result_tx = result_tx.clone();
         let worker_semaphore = semaphore.clone();
-        let proxy_url = proxy.clone();
         let user_agent_str = user_agent.get_random();
+        let proxies_clone = proxies.clone();
 
         tokio::spawn(async move {
             worker(
                 i,
-                &proxy_url,
+                proxies_clone,
                 &user_agent_str,
                 worker_rx,
                 worker_tx,
@@ -226,6 +250,7 @@ async fn run_proxy_mode(
 
     let logger_for_result = Arc::clone(logger);
     let target_for_save = target.to_string();
+    let output_path = args.output_path.clone();
     tokio::spawn(async move {
         while let Some((url, result)) = result_rx.recv().await {
             match result {
@@ -243,7 +268,7 @@ async fn run_proxy_mode(
                                 &format!("{} - {} ({})", title, description, link),
                                 true,
                             );
-                            save_results(&target_for_save, &vec![(title.clone(), link.clone(), description.clone())])
+                            save_results(&logger_for_result, &target_for_save, &vec![(title.clone(), link.clone(), description.clone())], output_path.as_deref())
                                 .unwrap_or_else(|e| {
                                     logger_for_result.err(&format!("Failed to save results: {}", e), true);
                                 });
@@ -273,15 +298,6 @@ async fn run_proxy_mode(
         true,
     );
     logger.inf("All tasks completed!", true);
-    logger.inf(
-        &format!(
-            "Results saved to {}/results/{}.txt",
-            current_dir().unwrap().display(),
-            target.replace("/", "_")
-        ),
-        true,
-    );
-
     Ok(())
 }
 
@@ -438,7 +454,7 @@ async fn run_api_mode(
         }
     }
 
-    save_results_simple(target, &found_urls).unwrap_or_else(|e| {
+    save_results_simple(&logger, &args.target, &found_urls, args.output_path.as_deref()).unwrap_or_else(|e| {
         logger.err(&format!("Failed to save results: {}", e), true);
     });
 
@@ -461,13 +477,14 @@ async fn main() {
     let logger = Arc::new(Logger::new(LogLevel::from(args.verbose)));
     let target = args.target.clone();
 
-    if is_results_exists(&target) {
+    let (exists, file) = is_results_exists(&logger, &target, args.output_path.as_deref());
+
+    if exists {
         logger.warn(
             &format!(
-                "Results for {} already exists in {}/results/{}",
+                "Results for {} already exists in {}",
                 target,
-                current_dir().unwrap().display(),
-                target
+                file.display()
             ),
             true,
         );

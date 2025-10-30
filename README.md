@@ -44,8 +44,11 @@ cargo build && cd target/debug/
 
 Enabling this future, it will create payload dorks for more accurate search
 
+> [!WARNING]
+> You must use some proxy List due to Google rate limit.
+
 ```bash
-enola --target foo --google-dork-mode
+enola --target foo --google-dork-mode --proxies YOUR_LIST_PROXY.txt
 ```
 
 > [!IMPORTANT]
@@ -66,7 +69,7 @@ enola --target foo --query myquery.txt
 Use a single dork payload with `SITE` and `STRING` placeholders:
 
 ```bash
-enola --target foo --payload "intitle:STRING inurl:SITE"
+enola --target foo --payload "intitle:STRING inurl:SITE --google-dork-mode"
 ```
 
 #### 2.2.3 Payloads / Sites
