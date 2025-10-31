@@ -33,7 +33,7 @@ pub async fn worker(
         let url = match maybe_url {
             Some(u) => u,
             None => {
-                let _ = log_tx.send(format!("Worker {}: Receiver closed", id)).await;
+                let _ = log_tx.send(format!("[#{}]: Receiver closed", id)).await;
                 break;
             }
         };
@@ -50,13 +50,13 @@ pub async fn worker(
         match &result {
             Ok(res) if res.status().is_success() => {
                 let _ = log_tx
-                    .send(format!("Worker {}: Successfully fetched {}", id, url))
+                    .send(format!("[#{} => {}] Successfully fetched {}", id, proxy.clone().split("://").collect::<Vec<&str>>()[1],  url))
                     .await;
                 let _ = result_tx.send((url.clone(), result)).await;
             }
             _ => {
                 let _ = log_tx
-                    .send(format!("Worker {}: Failed to fetch {}", id, url))
+                    .send(format!("[#{} => {}] Failed to fetch {}", id, proxy.clone().split("://").collect::<Vec<&str>>()[1], url))
                     .await;
                 let _ = tx.send(url.clone()).await;
             }

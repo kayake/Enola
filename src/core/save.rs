@@ -17,7 +17,7 @@ fn results_dir(logger: &Logger) -> PathBuf {
     }
 
     if let Some(home) = dirs::home_dir() {
-        let path = home.join(format!(".local/share/{}/results", APP_NAME));
+        let path = home.join(format!("/usr/share/{}/results", APP_NAME));
         logger.dbg(&format!("System mode → {}", path.display()), false);
         return path;
     }

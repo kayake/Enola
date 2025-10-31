@@ -7,12 +7,21 @@ use crate::core::proxy::worker;
 use crate::core::save::{is_results_exists, save_results, save_results_simple};
 
 use clap::Parser;
+use dirs::home_dir;
 use reqwest::{Client, Request, Response};
 use std::env::current_dir;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 use futures::stream::{self, StreamExt};
+
+fn data_default() -> std::path::PathBuf {
+
+    let mut path = home_dir().unwrap();
+    path.push(".enola/");
+    
+    return path;
+}
 
 fn time_format(seconds: u64) -> String {
     let hours = seconds / 3600;
@@ -39,6 +48,13 @@ fn time_format(seconds: u64) -> String {
     parts.join(", ")
 }
 
+static DEFAULT_UTILS: LazyLock<std::path::PathBuf> = LazyLock::new(|| data_default().join("/"));
+
+static DEFAULT_UTILS_SITES: LazyLock<std::path::PathBuf> = LazyLock::new(|| DEFAULT_UTILS.join("dorks/sites/all.txt"));
+static DEFAULT_UTILS_PAYLOADS: LazyLock<std::path::PathBuf> = LazyLock::new(|| DEFAULT_UTILS.join("dorks/payloads/general.txt"));
+static DEFAULT_USER_AGENTS: LazyLock<std::path::PathBuf> = LazyLock::new(|| DEFAULT_UTILS.join("request/user_agents.txt"));
+static DEFAULT_API_SITES: LazyLock<std::path::PathBuf> = LazyLock::new(|| DEFAULT_UTILS.join("apis/profile_urls.txt"));
+
 #[derive(Parser)]
 #[command(name = "Enola")]
 #[command(version = "1.0.0")]
@@ -61,7 +77,7 @@ struct Cli {
         short = 'o',
         long,
         help = "Output path for results",
-        help_heading = "Settings"
+        help_heading = "Settings",
     )]
     output_path: Option<String>,
 
@@ -73,7 +89,7 @@ struct Cli {
         long,
         help = "Provide the list of Dorks",
         help_heading = "Settings",
-        default_value_t = String::from("src/utils/dorks/payloads/general.txt")
+        default_value_t = DEFAULT_UTILS_PAYLOADS.to_string_lossy().into_owned()
     )]
     payloads: String,
 
@@ -82,7 +98,7 @@ struct Cli {
         long,
         help = "Provide the list of Sites",
         help_heading = "Settings",
-        default_value_t = String::from("src/utils/dorks/sites/all.txt")
+        default_value_t = DEFAULT_UTILS_SITES.to_string_lossy().into_owned()
     )]
     sites: String,
     
@@ -94,7 +110,7 @@ struct Cli {
         long = "api-sites",
         help = "Use APIs search engine's site",
         help_heading = "Settings",
-        default_value_t = String::from("src/utils/apis/profile_urls.txt")
+        default_value_t = DEFAULT_API_SITES.to_string_lossy().into_owned()
     )]
     api_sites: String,
     #[arg(
@@ -123,7 +139,7 @@ struct Cli {
         long = "user-agents",
         help = "Provide an User-Agents list",
         help_heading = "Request",
-        default_value_t = String::from("src/utils/request/user_agents.txt")
+        default_value_t = DEFAULT_USER_AGENTS.to_string_lossy().into_owned()
     )]
     user_agent_list: String,
 
@@ -215,6 +231,21 @@ async fn run_proxy_mode(
     if proxies.is_empty() {
         logger.err("no proxies were found", true);
         return Err("No proxies found".to_string());
+    }
+
+    if args.workers == 0 {
+        return Err("Number of workers must be at least 1".to_string());
+    }
+
+    if args.workers > 5 {
+        logger.warn(
+            "Using more than 5 workers may increase RAM usage",
+            true,
+        );
+        let input = logger.input("Do you want to continue? [Y/n]").to_lowercase();
+        if !input.starts_with('y') && !input.is_empty() {
+            return Err("User interrupted".to_string());
+        }
     }
 
     for i in 0..args.workers {
@@ -507,13 +538,18 @@ async fn main() {
     }
     let user_agent = RandomUserAgent::new(user_agents);
 
-    let result = if args.proxies.is_some() && args.google_dork_mode {
-        run_proxy_mode(&args, &target, &logger, &user_agent).await
-    } else {
-        run_api_mode(&args, &target, &logger, &user_agent).await
-    };
-
-    if let Err(e) = result {
-        logger.err(&format!("Error: {}", e), true);
+    match (args.proxies.is_some(), args.google_dork_mode) {
+        (true, true) => {
+            if let Err(e) = run_proxy_mode(&args, &target, &logger, &user_agent).await {
+                logger.err(&format!("Error during execution: {}", e), true);
+                std::process::exit(1);
+            }
+        },
+        _ => {
+            if let Err(e) = run_api_mode(&args, &target, &logger, &user_agent).await {
+                logger.err(&format!("Error during execution: {}", e), true);
+                std::process::exit(1);
+            }
+        }
     }
 }

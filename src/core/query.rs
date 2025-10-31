@@ -1,19 +1,15 @@
-use std::env;
 use std::fs::File;
 use std::path::Path;
 use std::io::{BufRead, BufReader};
 use std::io::Error;
 use regex::Regex;
 
-pub fn get_lines(file_path: &str) -> Result<Vec<String>, Error> {
-    let file = File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join(Path::new(file_path)))?;
+pub fn get_lines(path: &str) -> Result<Vec<String>, Error> {
+    let file = File::open(Path::new(path))?;
     let reader = BufReader::new(file);
-
-    let lines: Vec<String> = reader
-        .lines()
-        .collect::<Result<Vec<String>, Error>>()?;
-    Ok(lines)
+    reader.lines().collect()
 }
+
 
 fn replacer(list: Vec<String>, site: &str, string: &str) -> Vec<String> {
     let re = Regex::new("SITE|STRING").unwrap();
