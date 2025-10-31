@@ -1,41 +1,22 @@
 # Enola
-A powerful Google-dork search tool
+A powerful Google-dork and site search tool
 
 ## 1 Installation
 
-### 1.1 Debian / Kali / Ubuntu
-```bash
-sudo apt-get install enola
-```
-### 1.2 Arch Linux
+### Based Linux
 
 ```bash
-sudo pacman -S enola
-```
-### 1.3 Termux
-
-> [!WARNING]
-> `Rust` is not officially supported on `Termux`. Use `Kali NetHunter RootLess` (or `Kali NetHunter`) or download the binary from the Releases.
-
-### 1.4 Others
-
-```bash
-git clone https://github.com/kayake/enola
+sudo install.sh
 ```
 
-> [!TIP]
-> You can do all of this by running `./install.sh`.
+> [!IMPORTANT]
+> `sudo` is required. If you are using `Termux` without `root`, consider installing `Kali NetHunter (Rootless)`.
 
-Or build it yourself:
+### Windows
 
-```bash
-cargo build && cd target/debug/
-```
-
+You will exec `install.bat` with admin permissions
 > [!NOTE]
-> On Windows, you must install from the Releases.
-
-
+> You may ask, why super admin? Because the code will make `enola` as a global command. If uou don't agree, you download from [`releases/.exe`](https://github.com/kayake/enola/tags/releases/)
 ## 2 Options
 
 ### 2.1 Mode
