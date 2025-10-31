@@ -198,21 +198,6 @@ async fn run_proxy_mode(
     }
     logger.dbg(&format!("{} proxy(ies) were loaded", proxies.len()), true);
 
-    let time_approx = query.len() / args.simultaneous_requests;
-    logger.inf(
-        &format!(
-            "with {} proxies and {} simultaneous requests, this may take approximately \x1b[35;1m{}\x1b[0m",
-            proxies.len(),
-            args.simultaneous_requests,
-            time_format(time_approx as u64)
-        ),
-        false,
-    );
-    let continues = logger.input("Do you want to continue? [Y/n]").to_lowercase();
-    if !continues.starts_with('y') && !continues.is_empty() {
-        return Err("User interrupted".to_string());
-    }
-
     logger.inf("starting workers...", false);
     let start_time = Instant::now();
 
@@ -321,10 +306,9 @@ async fn run_proxy_mode(
     let duration = start_time.elapsed();
     logger.inf(
         &format!(
-            "average {:.2} requests/min completed in {} (Percentage Error: {}%)",
+            "average {:.2} requests/min completed in {}",
             query.len() as f64 / duration.as_secs_f64(),
             time_format(duration.as_secs()),
-            (duration.as_secs_f64() - time_approx as f64) / (time_approx as f64) * 100.0
         ),
         true,
     );
@@ -386,19 +370,6 @@ async fn run_api_mode(
         .collect::<Vec<Request>>();
     logger.dbg(&format!("{} build(s) were loaded", builds.len()), true);
 
-    let time_approx = builds.len() as u64 * args.delay / args.simultaneous_requests as u64;
-    logger.inf(
-        &format!(
-            "this may take approximately \x1b[35;1m{}\x1b[0m",
-            time_format(time_approx)
-        ),
-        false,
-    );
-    let continues = logger.input("Do you want to continue? [Y/n]").to_lowercase();
-    if !continues.starts_with('y') && !continues.is_empty() {
-        return Err("User interrupted".to_string());
-    }
-
     logger.inf("starting requests...", false);
     let start_time = Instant::now();
     let semaphore = Arc::new(Semaphore::new(args.simultaneous_requests));
@@ -446,10 +417,9 @@ async fn run_api_mode(
     let duration = start_time.elapsed();
     logger.inf(
         &format!(
-            "average {:.2} requests/min completed in {} (Percentage Error: {}%)",
+            "average {:.2} requests/min completed in {}",
             results.len() as f64 / duration.as_secs_f64(),
-            time_format(duration.as_secs()),
-            (duration.as_secs_f64() - time_approx as f64) / (time_approx as f64) * 100.0
+            time_format(duration.as_secs())
         ),
         true,
     );
