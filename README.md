@@ -173,9 +173,6 @@ enola --target "foo" --query queries.txt --proxies proxies.txt --google-dork-mod
 ## Security & Usage Notes
 
 * **Rate limits:** Google actively rate-limits and blocks automated searches. Use a proxy pool and sensible request pacing.
-* **Legal & ethical use:** Only scan targets you are authorized to test. Do **not** use Enola for illegal or abusive activities.
-* **Privacy:** Be careful when logging request/response bodies; they may contain sensitive information.
-
 ---
 
 ## License
