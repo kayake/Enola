@@ -48,7 +48,7 @@
 Run the bundled installer with root privileges:
 
 ```bash
-sudo ./install.sh
+./install.sh
 ```
 
 This will install `enola` as a global command (typically under `/usr/bin`).
