@@ -2,8 +2,8 @@
 set -e
 
 BIN_NAME="enola"
-INSTALL_DIR="$HOME/usr/bin"      # binário do usuário
-DATA_DIR="$HOME/.enola"             # dados do usuário
+INSTALL_DIR="/usr/bin"      
+DATA_DIR="$HOME/.enola"             
 PROJECT_ROOT="$(pwd)"
 
 if [ ! -f "$PROJECT_ROOT/target/release/$BIN_NAME" ]; then
