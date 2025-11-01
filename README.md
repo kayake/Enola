@@ -90,7 +90,7 @@ enola --target foo --google-dork-mode --proxies my-proxies.txt
 
 ### Mode
 
-`--mode` selects the scanning workflow. The primary specialized mode is **Google Dork Mode**, which dynamically composes dork payloads using your queries, site lists and payload templates.
+The primary specialized mode is **Google Dork Mode**, which dynamically composes dork payloads using your queries, site lists and payload templates.
 
 #### Google Dork Mode
 
