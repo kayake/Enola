@@ -63,7 +63,7 @@ Reference: [https://www.kali.org/docs/nethunter/nethunter-rootless/](https://www
 
 Run the provided `install.bat` **as Administrator** to register `enola` as a global command.
 
-If you prefer not to run an installer with elevated permissions, download the standalone executable from the releases page: `releases/*.exe`.
+If you prefer not to run an installer with elevated permissions, download the standalone executable from the [releases](https://github.com/kayake/enola/releases/latest) page.
 
 ---
 
