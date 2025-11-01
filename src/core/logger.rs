@@ -19,9 +19,9 @@ impl LogLevel {
             LogLevel::Info => "\x1b[32mINF\x1b[0m",
             LogLevel::Warn => "\x1b[33mWARN\x1b[0m",
             LogLevel::Error => "\x1b[31mERR\x1b[0m",
-            LogLevel::Debug => "\x1b[34mDBG\x1b[0m",
             LogLevel::Found => "\x1b[92mFOUND\x1b[0m",
             LogLevel::NotFound => "\x1b[91m!FOUND\x1b[0m",
+            LogLevel::Debug => "\x1b[34mDBG\x1b[0m",
             LogLevel::Request => "\x1b[36mREQ\x1b[0m",
             LogLevel::Response => "\x1b[95mRES\x1b[0m"
         }

@@ -10,17 +10,17 @@ use clap::Parser;
 use dirs::home_dir;
 use reqwest::{Client, Request, Response};
 use std::env::current_dir;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock as Lazy};
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 use futures::stream::{self, StreamExt};
+use std::path::PathBuf;
 
-fn data_default() -> std::path::PathBuf {
 
-    let mut path = home_dir().unwrap();
-    path.push(".enola/");
-    
-    return path;
+fn data_default() -> PathBuf {
+    let mut path = home_dir().unwrap_or_else(|| std::env::current_dir().unwrap());
+    path.push(".enola");
+    path
 }
 
 fn time_format(seconds: u64) -> String {
@@ -48,12 +48,12 @@ fn time_format(seconds: u64) -> String {
     parts.join(", ")
 }
 
-static DEFAULT_UTILS: LazyLock<std::path::PathBuf> = LazyLock::new(|| data_default().join("/"));
+static DEFAULT_UTILS: Lazy<PathBuf> = Lazy::new(|| data_default());
+static DEFAULT_UTILS_SITES: Lazy<PathBuf> = Lazy::new(|| DEFAULT_UTILS.join("dorks/sites/all.txt"));
+static DEFAULT_UTILS_PAYLOADS: Lazy<PathBuf> = Lazy::new(|| DEFAULT_UTILS.join("dorks/payloads/general.txt"));
+static DEFAULT_USER_AGENTS: Lazy<PathBuf> = Lazy::new(|| DEFAULT_UTILS.join("request/user_agents.txt"));
+static DEFAULT_API_SITES: Lazy<PathBuf> = Lazy::new(|| DEFAULT_UTILS.join("apis/profile_urls.txt"));
 
-static DEFAULT_UTILS_SITES: LazyLock<std::path::PathBuf> = LazyLock::new(|| DEFAULT_UTILS.join("dorks/sites/all.txt"));
-static DEFAULT_UTILS_PAYLOADS: LazyLock<std::path::PathBuf> = LazyLock::new(|| DEFAULT_UTILS.join("dorks/payloads/general.txt"));
-static DEFAULT_USER_AGENTS: LazyLock<std::path::PathBuf> = LazyLock::new(|| DEFAULT_UTILS.join("request/user_agents.txt"));
-static DEFAULT_API_SITES: LazyLock<std::path::PathBuf> = LazyLock::new(|| DEFAULT_UTILS.join("apis/profile_urls.txt"));
 
 #[derive(Parser)]
 #[command(name = "Enola")]
@@ -292,8 +292,11 @@ async fn run_proxy_mode(
                     }
                 }
                 Ok(res) => {
-                    logger_for_result.warn(&format!("Received non-success response for {}: {}", url, res.status()), true);
+                    let status = res.status();
+                    let url = res.url().clone();
+                    logger_for_result.nfnd(&format!("No results for {} => {}", url, status), true);
                 }
+
                 Err(e) => {
                     logger_for_result.err(&format!("Request failed for {}: {}", url, e), true);
                 }
@@ -437,18 +440,20 @@ async fn run_api_mode(
             Ok(res) if res.status().is_success() => {
                 let url = res.url().clone();
                 let status = res.status();
-                let text = res.text().await.unwrap_or_default();
-                if text.contains("Not Found") || text.contains("404") {
-                    logger.nfnd(&format!("No results found for {}", url), true);
-                } else {
-                    logger.fnd(
+                logger.fnd(
                         &format!("Results found for {} => \x1b[35;1m{}\x1b[0m", url, status),
                         true,
-                    );
-                    found_urls.push(url.to_string());
-                }
+                );
+                found_urls.push(url.to_string());
             }
-            Ok(_) => {}
+            Ok(res) => {
+                let url = res.url().clone();
+                let status = res.status();
+                logger.nfnd(
+                    &format!("No results for {} => {}", url, status),
+                    true,
+                );
+            }
             Err(e) => {
                 logger.res(&format!("Error occurred: {}", e), true);
             }

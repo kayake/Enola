@@ -6,11 +6,9 @@ INSTALL_DIR="/usr/bin"
 DATA_DIR="$HOME/.enola"             
 PROJECT_ROOT="$(pwd)"
 
-if [ ! -f "$PROJECT_ROOT/target/release/$BIN_NAME" ]; then
-    echo "Compiling $BIN_NAME..."
-    cargo build --release
-fi
+cargo build --release
 
+cargo build --release
 echo "Installing $BIN_NAME to $INSTALL_DIR (requires sudo)..."
 sudo cp "$PROJECT_ROOT/target/release/$BIN_NAME" "$INSTALL_DIR/$BIN_NAME"
 sudo chmod +x "$INSTALL_DIR/$BIN_NAME"
