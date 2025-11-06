@@ -120,7 +120,7 @@ enola --target foo --query myqueries.txt
 A payload template may include `SITE` and `STRING` placeholders that will be substituted at runtime:
 
 ```bash
-enola --target foo --payload "intitle:STRING inurl:SITE --google-dork-mode"
+enola --target foo --payload "intitle:STRING inurl:SITE" --google-dork-mode
 ```
 
 `SITE` will be replaced by entries from your sites list, and `STRING` by your queries or keywords.
